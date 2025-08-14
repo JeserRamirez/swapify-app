@@ -1,0 +1,176 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SwapStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum ItemCondition {
+  NEW
+  LIKE_NEW
+  USED
+  WELL_USED
+}
+
+enum LinkType {
+  WEBSITE
+  DISCORD
+  YOUTUBE
+  X
+  INSTAGRAM
+}
+
+model User {
+  id          String   @id @default(uuid())
+  username    String   @unique
+  email       String   @unique
+  password    String
+  displayName String?
+  avatarUrl   String?
+  location    String? // ciudad/estado/pais
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items         Item[]         @relation("OwnerItems")
+  sentSwaps     Swap[]         @relation("OfferedBy")
+  receivedSwaps Swap[]         @relation("OfferedTo")
+  notifications Notification[]
+
+  reviewsGiven    Review[] @relation("UserReviews")
+  reviewsReceived Review[] @relation("UserReviewed")
+
+  links UserLink[]
+
+  followers Follower[] @relation("followers")
+  following Follower[] @relation("following")
+}
+
+model UserLink {
+  id     String   @id @default(uuid())
+  userId String
+  type   LinkType
+  url    String
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Follower {
+  id          String   @id @default(uuid())
+  followerId  String // El que sigue
+  followingId String // El que es seguido
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("followers", fields: [followerId], references: [id])
+  following User @relation("following", fields: [followingId], references: [id])
+
+  @@unique([followerId, followingId]) // Para que no haya duplicados
+  @@index([followingId])
+}
+
+model Item {
+  id          String        @id @default(uuid())
+  title       String
+  description String?
+  ownerId     String
+  owner       User          @relation("OwnerItems", fields: [ownerId], references: [id])
+  images      Image[]
+  condition   ItemCondition @default(USED)
+  available   Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // relación muchos-a-muchos explícita con Category
+  categories  ItemCategory[]
+  // swaps donde este item es el solicitado o ofrecido
+  offeredIn   Swap[]         @relation("OfferedItem")
+  requestedIn Swap[]         @relation("RequestedItem")
+}
+
+model Image {
+  id     String @id @default(uuid())
+  url    String
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id])
+  order  Int    @default(0)
+}
+
+model Category {
+  id    String         @id @default(uuid())
+  name  String         @unique
+  slug  String         @unique
+  items ItemCategory[]
+}
+
+model ItemCategory {
+  id         String   @id @default(uuid())
+  itemId     String
+  categoryId String
+  item       Item     @relation(fields: [itemId], references: [id])
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([itemId, categoryId])
+  @@index([categoryId])
+  @@index([itemId])
+}
+
+model Swap {
+  id              String     @id @default(uuid())
+  offeredById     String
+  offeredToId     String
+  offeredItemId   String
+  requestedItemId String
+  message         String?
+  status          SwapStatus @default(PENDING)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  offeredBy     User @relation("OfferedBy", fields: [offeredById], references: [id])
+  offeredTo     User @relation("OfferedTo", fields: [offeredToId], references: [id])
+  offeredItem   Item @relation("OfferedItem", fields: [offeredItemId], references: [id])
+  requestedItem Item @relation("RequestedItem", fields: [requestedItemId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String?
+  data      Json? // payload extra para el cliente (por ejemplo swapId)
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, read])
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  reviewerId String
+  userId     String
+  rating     Int // 1..5
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  reviewer User @relation("UserReviews", fields: [reviewerId], references: [id])
+  user     User @relation("UserReviewed", fields: [userId], references: [id])
+}
